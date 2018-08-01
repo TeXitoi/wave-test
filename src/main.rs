@@ -54,12 +54,16 @@ fn init(mut p: init::Peripherals, mut _r: init::Resources) -> init::LateResource
 }
 
 fn sys_tick(_t: &mut Threshold, mut r: SYS_TICK::Resources) {
-    let max = r.PWM.get_max_duty();
-    r.PWM.set_duty(SIN[*r.CNT] as u16 * max / 255);
-    *r.CNT += 1;
-    if *r.CNT >= SIN.len() {
-        *r.CNT = 0;
+    let pitch = 880;
+    let num = *r.CNT * pitch;
+    let idx = (num / REF) % SIN.len();
+    if idx % REF == 0 {
+        *r.CNT = idx;
     }
+    let max = r.PWM.get_max_duty();
+    let duty = SIN[idx] as u16 * max / 255;
+    r.PWM.set_duty(duty);
+    *r.CNT += 1;
 }
 
 fn idle() -> ! {
@@ -67,7 +71,7 @@ fn idle() -> ! {
         rtfm::wfi();
     }
 }
-
+const REF: usize = 100;
 static SIN: [u8; 400] = [
     127,
     129,
