@@ -4,9 +4,9 @@ version = "0.1.0"
 authors = ["Guillaume Pinot <texitoi@texitoi.eu>"]
 
 [dependencies]
-stm32f103xx-hal = { git = "https://github.com/japaric/stm32f103xx-hal", branch = "master" }
-stm32f103xx = { version = "0.10.0", features = ["rt"]}
-cortex-m = "0.5"
-cortex-m-rt = { version = "0.5", features = ["device"]}
+stm32f103xx-hal = { git = "https://github.com/japaric/stm32f103xx-hal", rev = "330c904473dc3a34ef2864166dcbe658992d652a" }
+stm32f103xx = { version = "0.9.0", features = ["rt"] }
+cortex-m = "0.4"
+cortex-m-rt = "0.4"
 panic-semihosting = "0.3"
-cortex-m-rtfm = { git = "https://github.com/et1975/cortex-m-rtfm", branch = "master" }
+cortex-m-rtfm = { git = "https://github.com/TeXitoi/cortex-m-rtfm", branch = "test-one-task" }

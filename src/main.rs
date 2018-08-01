@@ -1,10 +1,8 @@
-#![no_main]
 #![no_std]
 #![feature(proc_macro_gen)]
 #![feature(use_extern_macros)]
 
 extern crate cortex_m;
-#[macro_use]
 extern crate cortex_m_rt as rt;
 extern crate cortex_m_rtfm as rtfm;
 extern crate stm32f103xx_hal as hal;
@@ -12,18 +10,11 @@ extern crate panic_semihosting;
 
 use hal::prelude::*;
 use cortex_m::peripheral::syst::SystClkSource;
-use rtfm::Threshold;
+use rtfm::{app, Threshold};
 
 type Pwm = hal::pwm::Pwm<hal::stm32f103xx::TIM2, hal::pwm::C1>;
 
-entry!(run);
-
-fn run() -> ! {
-    main();
-    loop {}
-}
-
-rtfm::app! {
+app! {
     device: hal::stm32f103xx,
 
     resources: {
@@ -75,18 +66,6 @@ fn idle() -> ! {
     loop {
         rtfm::wfi();
     }
-}
-
-exception!(HardFault, hard_fault);
-
-fn hard_fault(ef: &rt::ExceptionFrame) -> ! {
-    panic!("{:#?}", ef);
-}
-
-exception!(*, default_handler);
-
-fn default_handler(irqn: i16) {
-    panic!("Unhandled exception (IRQn = {})", irqn);
 }
 
 static SIN: [u8; 400] = [
