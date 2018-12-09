@@ -1,76 +1,92 @@
+#![no_main]
 #![no_std]
-#![feature(proc_macro_gen)]
-#![feature(use_extern_macros)]
 
 extern crate cortex_m;
+#[macro_use]
 extern crate cortex_m_rt as rt;
-extern crate cortex_m_rtfm as rtfm;
 extern crate stm32f103xx_hal as hal;
 extern crate panic_semihosting;
+extern crate cortex_m_semihosting as sh;
 
 use hal::prelude::*;
 use cortex_m::peripheral::syst::SystClkSource;
-use rtfm::{app, Threshold};
+use core::fmt::Write;
 
-type Pwm = hal::pwm::Pwm<hal::stm32f103xx::TIM2, hal::pwm::C1>;
+type Pwm = (
+    hal::pwm::Pwm<hal::stm32f103xx::TIM2, hal::pwm::C1>,
+    hal::pwm::Pwm<hal::stm32f103xx::TIM2, hal::pwm::C2>,
+    hal::pwm::Pwm<hal::stm32f103xx::TIM2, hal::pwm::C3>,
+    hal::pwm::Pwm<hal::stm32f103xx::TIM2, hal::pwm::C4>,
+);
 
-app! {
-    device: hal::stm32f103xx,
+static mut PWM: Option<Pwm> = None;
 
-    resources: {
-        static CNT: usize = 0;
-        static PWM: Pwm;
-    },
+#[entry]
+fn main()-> ! {
+    let device = hal::stm32f103xx::Peripherals::take().unwrap();
+    let mut core = cortex_m::Peripherals::take().unwrap();
 
-    tasks: {
-        SYS_TICK: {
-            path: sys_tick,
-            resources: [PWM, CNT],            
-        },
-    },
-}
-
-fn init(mut p: init::Peripherals, mut _r: init::Resources) -> init::LateResources {
-    let mut flash = p.device.FLASH.constrain();
-    let mut rcc = p.device.RCC.constrain();
-    let mut afio = p.device.AFIO.constrain(&mut rcc.apb2);
-    let mut gpioa = p.device.GPIOA.split(&mut rcc.apb2);
-    let clocks = rcc.cfgr.freeze(&mut flash.acr);
+    let mut flash = device.FLASH.constrain();
+    let mut rcc = device.RCC.constrain();
+    let mut afio = device.AFIO.constrain(&mut rcc.apb2);
+    let mut gpioa = device.GPIOA.split(&mut rcc.apb2);
+        let clocks = rcc
+            .cfgr
+            .use_hse(8.mhz())
+            .sysclk(72.mhz())
+            .pclk1(36.mhz())
+            .freeze(&mut flash.acr);
     let c1 = gpioa.pa0.into_alternate_push_pull(&mut gpioa.crl);
-    let mut pwm = p.device
+    let c2 = gpioa.pa1.into_alternate_push_pull(&mut gpioa.crl);
+    let c3 = gpioa.pa2.into_alternate_push_pull(&mut gpioa.crl);
+    let c4 = gpioa.pa3.into_alternate_push_pull(&mut gpioa.crl);
+    let mut pwm = device
         .TIM2
-        .pwm(c1, &mut afio.mapr, 40000.hz(), clocks, &mut rcc.apb1);
-    pwm.enable();
-    
-    // configure the system timer to generate one interrupt every second
-    p.core.SYST.set_clock_source(SystClkSource::Core);
-    p.core.SYST.set_reload(200); // 40kHz
-    p.core.SYST.enable_interrupt();
-    p.core.SYST.enable_counter();
+        .pwm((c1, c2, c3, c4), &mut afio.mapr, (72_000_000 / 256).hz(), clocks, &mut rcc.apb1);
 
-    init::LateResources {
-        PWM: pwm
+    (unsafe { &*hal::stm32f103xx::TIM2::ptr() }).ccmr1_output
+        .modify(|_, w| w.oc2pe().set_bit().oc2m().pwm2());
+
+    pwm.0.enable();
+    pwm.1.enable();
+
+    let max = pwm.1.get_max_duty();
+    //writeln!(sh::hio::hstdout().unwrap(), "resolution: {}", max).unwrap();
+    let val = max / 2;
+    pwm.0.set_duty(val);
+    pwm.1.set_duty(val);
+
+
+    unsafe { PWM = Some(pwm); }
+
+    core.SYST.set_clock_source(SystClkSource::Core);
+    core.SYST.set_reload(72_000 / 40); // 40kHz
+    core.SYST.enable_interrupt();
+    core.SYST.enable_counter();
+
+    loop {
+        cortex_m::asm::wfi();
     }
 }
 
-fn sys_tick(_t: &mut Threshold, mut r: SYS_TICK::Resources) {
+#[exception]
+fn SysTick() {
+    static mut CNT: usize = 0;
+    let pwm = unsafe { PWM.as_mut().unwrap() };
+
     let pitch = 880;
-    let num = *r.CNT * pitch;
+    let num = *CNT * pitch;
     let idx = (num / REF) % SIN.len();
     if idx % REF == 0 {
-        *r.CNT = idx;
+        *CNT = idx;
     }
-    let max = r.PWM.get_max_duty();
+    let max = pwm.0.get_max_duty();
     let duty = SIN[idx] as u16 * max / 255;
-    r.PWM.set_duty(duty);
-    *r.CNT += 1;
+    pwm.0.set_duty(duty);
+    pwm.1.set_duty(duty);
+    *CNT += 1;
 }
 
-fn idle() -> ! {
-    loop {
-        rtfm::wfi();
-    }
-}
 const REF: usize = 100;
 static SIN: [u8; 400] = [
     127,
